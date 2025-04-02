@@ -35,7 +35,7 @@ function App() {
       if (!response.ok) throw new Error("Could not fetch manifest.");
 
       const data = await response.json();
-      await extractImageInfo(data);
+      await extractTiles(data);
       setError("");
     } catch (err: any) {
       setError(err.message);
@@ -43,13 +43,41 @@ function App() {
   };
 
   const extractTiles = async (manifest: any) => {
+    console.log("Manifest retrieved.")
     console.log(manifest);
-
     const image_info = await extractImageInfo(manifest);
     if(image_info){
       console.log(image_info);
+      const x: number = 0, y: number = 0;
+      const w: number = image_info.tile_w;
+      const h: number = image_info.tile_h;
+
+      const tile_link: string = `${image_info.base_url}/${x},${y},${w},${h}/full/0/default.jpg`
+      await download_image(tile_link);
     }
 
+  };
+
+  const download_image = async (url: string) => {
+    console.log(`Downloading ${url}`)
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to fetch image at: ${url}`);
+  
+      const blob = await response.blob();
+      const obj_url = URL.createObjectURL(blob);
+  
+      const link = document.createElement("a");
+      link.href = obj_url;
+      link.download = "tile.jpg";
+      document.body.appendChild(link);
+      link.click();
+  
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading image:", error);
+    }
   };
 
   const extractImageInfo = async (manifest: any) => {
