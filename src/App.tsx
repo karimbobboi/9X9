@@ -7,12 +7,20 @@ import JSZip from 'jszip';
 
 function App() {
   const [manifest, setManifest] = useState<string>('');
-  const [error, setError] = useState<string>("");
   const [zipTiles, setZipTiles] = useState<boolean>(false);
-  const [progress, setProgress] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [saveToPDF, setSaveToPDF] = useState<boolean>(true);
   const [image_resolution, setResolution] = useState<number>(9);
+  const [consoleMessages, setConsoleMessages] = useState<string[]>([
+    'WELCOME']);
+
+  const updateError = (message: string) => {
+    setConsoleMessages(prev => [...prev, `ERROR: ${message}`]);
+  };
+
+  const updateProgress = (message: string) => {
+    setConsoleMessages(prev => [...prev, message]);
+  };
 
   const isValidUrl = (url: string): boolean => {
     try {
@@ -25,61 +33,59 @@ function App() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
-    setProgress("");
     
     if (manifest && isValidUrl(manifest)) {
       setIsLoading(true);
       await download_IIIF_document();
       setIsLoading(false);
     } else {
-      setError("Invalid IIIF Manifest URL.");
+      updateError("Invalid IIIF Manifest URL.");
     }
   };
   
   const download_IIIF_document = async () => {
     try {
-      setProgress("Fetching IIIF manifest...");
+      updateProgress("Fetching IIIF manifest...");
       const iiif_manifest = await fetchIIIF();
       
       if (!iiif_manifest) {
-        setError("Failed to retrieve manifest");
+        updateError("Failed to retrieve manifest");
         return;
       }
       
-      setProgress("Extracting image information...");
+      updateProgress("Extracting image information...");
       const canvases = await extractImageInfo(iiif_manifest);
       
       if (!canvases || canvases.length === 0) {
-        setError("No valid canvases found in manifest");
+        updateError("No valid canvases found in manifest");
         return;
       }
       
-      setProgress("Processing image tiles...");
+      updateProgress("Processing image tiles...");
       const tiles_info = await extractTiles(canvases);
 
       if (!tiles_info || tiles_info.length === 0) {
-        setError("No valid tiles found");
+        updateError("No valid tiles found");
         return;
       }
 
       for (let i = 0; i < tiles_info.length; i++) {
         const tileGroup = tiles_info[i];
         if (tileGroup && tileGroup.length > 0) {
-          setProgress(`Combining image ${i+1} of ${tiles_info.length}...`);
+          updateProgress(`Combining image ${i+1} of ${tiles_info.length}...`);
           const { max_width, max_height } = tileGroup[0];
           await combineTiles(tileGroup, max_width, max_height, i+1, tiles_info.length);
           
           if (zipTiles) {
-            setProgress(`Creating ZIP for image ${i+1}...`);
+            updateProgress(`Creating ZIP for image ${i+1}...`);
             await download_all_tiles(tileGroup, i+1);
           }
         }
       }
       
-      setProgress("All images processed successfully!");
+      updateProgress("All images processed successfully!");
     } catch (err: any) {
-      setError(`Processing error: ${err.message}`);
+      updateError(`Processing error: ${err.message}`);
     }
   };
 
@@ -94,14 +100,14 @@ function App() {
       const data = await response.json();
       return data;
     } catch (err: any) {
-      setError(`Error: ${err.message}`);
+      updateError(`Error: ${err.message}`);
       return null;
     }
   };
 
   const extractTiles = async (canvases: any[]) => {    
     if(!canvases || canvases.length === 0){
-      setError("No valid canvases to extract tiles from");
+      updateError("No valid canvases to extract tiles from");
       return null;
     }
 
@@ -153,7 +159,7 @@ function App() {
       
       for (const tile of tiles) {
         try {
-          setProgress(`Combining image ${imageNum} of ${totalImages}: loading tile ${loadedCount}/${totalTiles}`);
+          updateProgress(`Combining image ${imageNum} of ${totalImages}: loading tile ${loadedCount}/${totalTiles}`);
           loadedCount++;
           
           await new Promise((resolve, reject) => {
@@ -184,8 +190,9 @@ function App() {
           console.error(`Error processing tile ${tile.url}:`, error);
         }
       }
-  
-      const finalImage = canvas.toDataURL("image/jpeg", 0.9);
+      
+      const resolution = (image_resolution && image_resolution > 0 && image_resolution < 10) ? (image_resolution / 10) : 0.9;
+      const finalImage = canvas.toDataURL("image/jpeg", resolution);
       const link = document.createElement("a");
       link.href = finalImage;
       link.download = `combined_image_${imageNum}.jpg`;
@@ -196,7 +203,7 @@ function App() {
       return true;
     } catch (error) {
       console.error("Error combining tiles:", error);
-      setError(`Failed to combine tiles for image ${imageNum}: ${error}`);
+      updateError(`Failed to combine tiles for image ${imageNum}: ${error}`);
       return false;
     }
   };
@@ -209,7 +216,7 @@ function App() {
       
       for (const tile_obj of tile_urls) {
         try {
-          setProgress(`Zipping image ${imageNum}: processing tile ${loadedCount}/${totalTiles}`);
+          updateProgress(`Zipping image ${imageNum}: processing tile ${loadedCount}/${totalTiles}`);
           
           const response = await fetch(tile_obj.url);
           if (!response.ok) {
@@ -239,14 +246,14 @@ function App() {
       return true;
     } catch (error) {
       console.log("Error creating zip:", error);
-      setError(`Failed to create zip for image ${imageNum}: ${error}`);
+      updateError(`Failed to create zip for image ${imageNum}: ${error}`);
       return false;
     }
   };
 
   const extractImageInfo = async (manifest: any) => {
     if(!manifest?.sequences?.[0]?.canvases) {
-      setError("Invalid manifest structure: missing sequences or canvases");
+      updateError("Invalid manifest structure: missing sequences or canvases");
       return null;
     }
     
@@ -299,7 +306,7 @@ function App() {
       return all_canvases;
     } catch (err) {
       console.error("Error extracting image info:", err);
-      setError(`Failed to extract image info: ${err}`);
+      updateError(`Failed to extract image info: ${err}`);
       return null;
     }
   };
@@ -340,11 +347,13 @@ function App() {
             placeholder="Enter IIIF manifest URL" 
             value={manifest}
             onChange={(event) => setManifest(event?.target.value)}
+            disabled={isLoading}
             style={{
               backgroundColor: '#44074B',
               color: 'white',
               fontSize: '1rem',
-              boxShadow: '0px 0px 30px 2px #44074B'
+              boxShadow: '0px 0px 30px 2px #44074B',
+              opacity: `${manifest.length > 0 ? '1' : '0.9'}`
             }}
           />
         </Form.Group>
@@ -357,7 +366,6 @@ function App() {
             color: '#CCC900'
           }}
         >
-          {/* {isLoading ? 'Processing...' : 'Download'} */}
           <i className="bi bi-box-arrow-down fs-3"></i>
         </button>
 
@@ -435,35 +443,29 @@ function App() {
         </Stack>
       </Form>
 
-      <div className='d-flex px-2 py-1 rounded text-start overflow-y-scroll flex-grow-1' 
-      style={{
-        backgroundColor: '#204AAC',
-        color: '#FFFB00',
-        fontSize: '0.8rem',
-        width: '100%',
-        borderWidth: '1.5px',       
-        borderColor: '#537DDF',
-        borderStyle: 'solid',
-        scrollbarWidth: 'none'
-      }}
-    >
-      <p> 
-      Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
-      Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
-      </p>
-    </div>
+      <div 
+        className='px-2 py-1 rounded text-start overflow-y-scroll flex-grow-1' 
+        style={{
+          backgroundColor: '#204AAC',
+          color: '#FFFB00',
+          fontSize: '0.8rem',
+          width: '100%',
+          borderWidth: '1.5px',       
+          borderColor: '#537DDF',
+          borderStyle: 'solid',
+          scrollbarWidth: 'none'
+        }}
+      >
+        {consoleMessages.map((msg, index) => (
+          <p key={index} style={{ 
+            color: msg.startsWith('ERROR:') ? '#FF5555' : '#FFFB00',
+            margin: '4px 0'
+          }}>
+            {msg}
+          </p>
+        ))}
+      </div>
       
-      {error && (
-        <div className="alert alert-danger mt-3 w-75">
-          {error}
-        </div>
-      )}
-      
-      {progress && (
-        <div className="alert alert-info mt-3 w-75">
-          {progress}
-        </div>
-      )}
     </div>
     </main>
   );
