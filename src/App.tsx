@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import {Form} from 'react-bootstrap';
+import {Form, Stack} from 'react-bootstrap';
 import "bootstrap/dist/css/bootstrap.min.css";
 import './App.css';
 import './utils';
@@ -11,6 +11,8 @@ function App() {
   const [zipTiles, setZipTiles] = useState<boolean>(false);
   const [progress, setProgress] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [saveToPDF, setSaveToPDF] = useState<boolean>(true);
+  const [image_resolution, setResolution] = useState<number>(9);
 
   const isValidUrl = (url: string): boolean => {
     try {
@@ -302,35 +304,154 @@ function App() {
     }
   };
 
+  const handleRange = (event: React.ChangeEvent<HTMLInputElement >) => {
+    const resoultion = event.currentTarget.value;
+    if(resoultion)
+      setResolution(parseInt(resoultion));
+  };
+
   return (
-    <div className="App d-flex flex-column justify-content-center align-items-center vh-100">      
-      <Form onSubmit={handleSubmit} className="w-75">
-        <Form.Group className="mb-3">
+    <main 
+  className="App d-flex flex-column justify-content-center align-items-center vh-100"
+  style={{
+    backgroundColor: '#0A0A0A',
+    fontFamily: `"Cascadia Code", monospace`,
+  }}>
+  <div className="p-3 rounded d-flex flex-column"
+    style={{
+      backgroundColor: '#2659CF',
+      opacity: '0.9',
+      width: '30vw',
+      minWidth: '380px',
+      height: '75vh',
+      minHeight: '507px',
+      borderWidth: '1.5px',       
+      borderColor: '#537DDF',
+      borderStyle: 'solid',
+    }}
+  >            
+      <Form onSubmit={handleSubmit} 
+        className="mx-auto py-3 flex-shrink-0 w-100">
+        <Form.Group className="mb-3 w-100">
           <Form.Control 
             type="text" 
+            id="urlField"
+            className='rounded border-dark'
             placeholder="Enter IIIF manifest URL" 
             value={manifest}
             onChange={(event) => setManifest(event?.target.value)}
+            style={{
+              backgroundColor: '#44074B',
+              color: 'white',
+              fontSize: '1rem',
+              boxShadow: '0px 0px 30px 2px #44074B'
+            }}
           />
         </Form.Group>
-        
-        <Form.Group className="mb-3">
-          <Form.Check
-            type="checkbox"
-            label="Also download individual tiles as ZIP"
-            checked={zipTiles}
-            onChange={(e) => setZipTiles(e.target.checked)}
-          />
-        </Form.Group>
-        
+
         <button 
           type="submit" 
-          className="btn btn-primary" 
+          className="btn btn-transparent px-2 py-0 download-btn" 
           disabled={isLoading}
+          style={{
+            color: '#CCC900'
+          }}
         >
-          {isLoading ? 'Processing...' : 'Download'}
+          {/* {isLoading ? 'Processing...' : 'Download'} */}
+          <i className="bi bi-box-arrow-down fs-3"></i>
         </button>
+
+        {/* <hr className='mb-2 border-2' /> */}
+        
+        
+        <Stack gap={1} className='mt-4' style={{fontSize: '0.9rem'}}>  
+          <Form.Group className="text-light d-flex align-items-center">
+            <Form.Label className='fw-bold'>DOWNLOAD INDIVIDUAL TILE:</Form.Label>
+            <Form.Check
+              type="checkbox"
+              checked={zipTiles}
+              onChange={(e) => setZipTiles(e.target.checked)}
+              className='ms-auto mb-2'
+            />
+          </Form.Group>
+
+          <Form.Group className="text-light d-flex align-items-center">
+            <Form.Label className='fw-bold'>SAVE AS:</Form.Label>
+            <div className='ms-auto mb-2 d-flex'>
+              <Form.Check
+                type="radio"
+                checked={saveToPDF}
+                label="PDF"
+                onChange={(e) => setSaveToPDF(e.target.checked)}
+                className='me-3'
+                style={{
+                  color: `${saveToPDF ? '#FFFB00' : '#D85A99'}`
+                }}
+              />
+
+              <Form.Check
+                type="radio"
+                checked={!saveToPDF}
+                label="JPG"
+                onChange={(e) => setSaveToPDF(!(e.target.checked))}
+                className=''
+                style={{
+                  color: `${!saveToPDF ? '#FFFB00' : '#D85A99'}`
+                }}
+              />
+            </div>
+          </Form.Group>
+          
+          <Form.Group className="text-light text-start">
+            <Form.Label className='fw-bold'>OUTPUT DIRECTORY:</Form.Label>
+            <div className="input-group custom-file-button">
+              <input type="file" className="form-control border-dark" id="inputGroupFile"
+              style={{
+                backgroundColor: '#2659CF'
+              }}
+              />
+            </div>
+          </Form.Group>
+
+          <Form.Group className="text-light text-start mt-1">
+            <div className='d-flex'>
+              <Form.Label className='fw-bold'>SET IMAGE RESOLUTION:</Form.Label>
+              <Form.Label className='fw-bold ms-auto' style={{color: '#CCC900'}}>{image_resolution}</Form.Label>
+            </div>
+            <Stack direction='horizontal' className='my-0' gap={2}>
+              <Form.Label className='fw-bold'
+                style={{fontSize: '0.8rem'}}
+              >
+                1
+              </Form.Label>
+              <input type="range" className="form-range mb-2" min="1" max="9" defaultValue={image_resolution} onChange={handleRange}/>
+              <Form.Label className='fw-bold'
+                style={{fontSize: '0.8rem'}}
+              >
+                9
+              </Form.Label>
+            </Stack>
+          </Form.Group>
+        </Stack>
       </Form>
+
+      <div className='d-flex px-2 py-1 rounded text-start overflow-y-scroll flex-grow-1' 
+      style={{
+        backgroundColor: '#204AAC',
+        color: '#FFFB00',
+        fontSize: '0.8rem',
+        width: '100%',
+        borderWidth: '1.5px',       
+        borderColor: '#537DDF',
+        borderStyle: 'solid',
+        scrollbarWidth: 'none'
+      }}
+    >
+      <p> 
+      Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
+      Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
+      </p>
+    </div>
       
       {error && (
         <div className="alert alert-danger mt-3 w-75">
@@ -344,6 +465,7 @@ function App() {
         </div>
       )}
     </div>
+    </main>
   );
 }
 

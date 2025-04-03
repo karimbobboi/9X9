@@ -36,3 +36,47 @@
     transform: rotate(360deg);
   }
 }
+
+#urlField::placeholder {
+  color: white;
+  opacity: 1;
+}
+
+.download-btn:hover {
+  background-color: #CCC900;
+}
+
+.download-btn:hover i {
+  color: #44074B;
+}
+
+.custom-file-button input[type=file] {
+  margin-left: -2px !important;
+}
+
+.custom-file-button input[type=file]::-webkit-file-upload-button {
+  display: none;
+}
+
+.custom-file-button input[type=file]::file-selector-button {
+  display: none;
+}
+
+.custom-file-button:hover label {
+  background-color: #dde0e3;
+  cursor: pointer;
+}
+
+
+
+.form-range::-webkit-slider-thumb {
+  background: #CCC900;
+}
+
+.form-range::-moz-range-thumb {
+  background: #CCC900;
+}
+
+.form-range::-ms-thumb {
+  background: #CCC900;
+}
