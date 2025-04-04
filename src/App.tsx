@@ -2,15 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import {Form, Stack} from 'react-bootstrap';
 import "bootstrap/dist/css/bootstrap.min.css";
 import './App.css';
-import './utils';
-import JSZip, { loadAsync } from 'jszip';
+import JSZip from 'jszip';
 import jsPDF from 'jspdf';
 
 function App() {
   const [manifest, setManifest] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [saveToPDF, setSaveToPDF] = useState<boolean>(true);
-  const [image_resolution, setResolution] = useState<number>(7);
+  const [image_resolution, setResolution] = useState<number>(6);
   const [consoleMessages, setConsoleMessages] = useState<string[]>(
     [
       'IIIF DOWNLOADER',
