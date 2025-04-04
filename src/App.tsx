@@ -1,25 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {Form, Stack} from 'react-bootstrap';
 import "bootstrap/dist/css/bootstrap.min.css";
 import './App.css';
 import './utils';
-import JSZip from 'jszip';
+import JSZip, { loadAsync } from 'jszip';
+import jsPDF from 'jspdf';
 
 function App() {
   const [manifest, setManifest] = useState<string>('');
-  const [zipTiles, setZipTiles] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [saveToPDF, setSaveToPDF] = useState<boolean>(true);
-  const [image_resolution, setResolution] = useState<number>(9);
-  const [consoleMessages, setConsoleMessages] = useState<string[]>([
-    'WELCOME']);
+  const [image_resolution, setResolution] = useState<number>(7);
+  const [consoleMessages, setConsoleMessages] = useState<string[]>(
+    [
+      'IIIF DOWNLOADER',
+      '------------------------',
+      'WELCOME!',
+      '',
+      'INSTRUCTIONS:',
+      '1. PASTE A VALID IIIF MANIFEST URL',
+      '2. CHOOSE OUTPUT FORMAT (PDF/ZIP)',
+      '3. SET A FILENAME',
+      '4. ADJUST IMAGE RESOLUTION IF NEEDED (9 best)',
+      '5. CLICK DOWNLOAD BUTTON'
+    ]
+  );
+  const consoleContainerRef = useRef<HTMLDivElement>(null);
+  const [saveFileName, setSaveFileName] = useState<string>('download')
 
+  useEffect(() => {
+    if (consoleContainerRef.current) {
+      consoleContainerRef.current.scrollTop = consoleContainerRef.current.scrollHeight;
+    }
+  }, [consoleMessages]);
+  
   const updateError = (message: string) => {
-    setConsoleMessages(prev => [...prev, `ERROR: ${message}`]);
+    if (message.includes('\n')) {
+      const lines = message.split('\n');
+      setConsoleMessages(prev => [...prev, ...lines.map(line => `${line.length > 0 ? 'ERROR: ' : '‎'}${line}`)]);
+    } else {
+      setConsoleMessages(prev => [...prev, `ERROR: ${message}`]);
+    }
   };
-
+  
   const updateProgress = (message: string) => {
-    setConsoleMessages(prev => [...prev, message]);
+    if (message.includes('\n')) {
+      const lines = message.split('\n');
+      setConsoleMessages(prev => [...prev, ...lines.map(line => `${line.length > 0 ? line : '‎'}`)]);
+    } else {
+      setConsoleMessages(prev => [...prev, message]);
+    }
   };
 
   const isValidUrl = (url: string): boolean => {
@@ -33,26 +63,34 @@ function App() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if(saveFileName.length < 1){
+      updateError("PLEASE ENTER A FILENAME");
+      return;
+    }
     
     if (manifest && isValidUrl(manifest)) {
       setIsLoading(true);
       await download_IIIF_document();
       setIsLoading(false);
     } else {
-      updateError("Invalid IIIF Manifest URL.");
+      updateError("Invalid IIIF Manifest URL");
     }
   };
   
   const download_IIIF_document = async () => {
     try {
-      updateProgress("Fetching IIIF manifest...");
+      updateProgress("\nFetching IIIF manifest...");
       const iiif_manifest = await fetchIIIF();
+      console.log(iiif_manifest);
       
       if (!iiif_manifest) {
         updateError("Failed to retrieve manifest");
         return;
       }
       
+      updateProgress("MANIFEST LOADED");
+      updateProgress("TITLE: " + iiif_manifest.label);
       updateProgress("Extracting image information...");
       const canvases = await extractImageInfo(iiif_manifest);
       
@@ -69,21 +107,9 @@ function App() {
         return;
       }
 
-      for (let i = 0; i < tiles_info.length; i++) {
-        const tileGroup = tiles_info[i];
-        if (tileGroup && tileGroup.length > 0) {
-          updateProgress(`Combining image ${i+1} of ${tiles_info.length}...`);
-          const { max_width, max_height } = tileGroup[0];
-          await combineTiles(tileGroup, max_width, max_height, i+1, tiles_info.length);
-          
-          if (zipTiles) {
-            updateProgress(`Creating ZIP for image ${i+1}...`);
-            await download_all_tiles(tileGroup, i+1);
-          }
-        }
-      }
+      await download_all_images(tiles_info);
       
-      updateProgress("All images processed successfully!");
+      
     } catch (err: any) {
       updateError(`Processing error: ${err.message}`);
     }
@@ -143,8 +169,7 @@ function App() {
     return image_urls;
   };
 
-  const combineTiles = async (tiles: { url: string; x: number; y: number; width: number; height: number }[], 
-                              width: number, height: number, imageNum: number, totalImages: number) => {
+  const combineTiles = async (tiles: { url: string; x: number; y: number; width: number; height: number }[], width: number, height: number) => {
     try {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
@@ -154,14 +179,8 @@ function App() {
       canvas.width = width;
       canvas.height = height;
       
-      let loadedCount = 1;
-      const totalTiles = tiles.length;
-      
       for (const tile of tiles) {
         try {
-          updateProgress(`Combining image ${imageNum} of ${totalImages}: loading tile ${loadedCount}/${totalTiles}`);
-          loadedCount++;
-          
           await new Promise((resolve, reject) => {
             const img = new Image();
             img.crossOrigin = "anonymous";
@@ -193,60 +212,141 @@ function App() {
       
       const resolution = (image_resolution && image_resolution > 0 && image_resolution < 10) ? (image_resolution / 10) : 0.9;
       const finalImage = canvas.toDataURL("image/jpeg", resolution);
-      const link = document.createElement("a");
-      link.href = finalImage;
-      link.download = `combined_image_${imageNum}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      return true;
+      return finalImage;
     } catch (error) {
       console.error("Error combining tiles:", error);
-      updateError(`Failed to combine tiles for image ${imageNum}: ${error}`);
+      return null;
+    }
+  };
+
+  const download_all_images = async (images: any[]) => {
+    let image_urls = [];
+    for (let i = 0; i < images.length; i++) {
+      const tileGroup = images[i];
+      if (tileGroup && tileGroup.length > 0) {
+        updateProgress(`Combining image ${i+1} of ${images.length}...`);
+        const { max_width, max_height } = tileGroup[0];
+        const image = await combineTiles(tileGroup, max_width, max_height);
+        if(!image) updateError(`Failed to combine tiles for image ${i+1}.}`);
+        image_urls.push(image);
+      }
+    }
+    
+    if(saveToPDF){
+      await create_pdf_from_images(image_urls);
+    }
+    
+    else {
+      await create_zip_from_images(image_urls);
+    }
+  };
+
+  const create_pdf_from_images = async (image_urls: any[]) => {
+    try {
+      const pdf = new jsPDF();
+      let firstPage = true;
+      let imageCount = 1;
+  
+      updateProgress(`Creating PDF with ${image_urls.length} images...`);
+      for (const image of image_urls) {
+        try {
+          updateProgress(`Processing image ${imageCount}`);
+          
+          if (image) {
+            const imgProps = pdf.getImageProperties(image);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            if (!firstPage) {
+              pdf.addPage([pdfWidth, pdfHeight]);
+            } else {
+              pdf.deletePage(1);
+              pdf.addPage([pdfWidth, pdfHeight]);
+              firstPage = false;
+            }
+            
+            pdf.addImage(image, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          } else {
+            updateError(`Image is null and cannot be processed.`);
+          }
+          imageCount++;
+        } catch (err) {
+          console.log(`Error processing image ${imageCount} for PDF:`, err);
+        }
+      }
+  
+      const pageCount = pdf.internal.pages.length;
+      if (pageCount > imageCount - 1) {
+        pdf.deletePage(pageCount);
+      }
+  
+      if(saveFileName.includes('.pdf'))
+        pdf.save(saveFileName);
+      else pdf.save(saveFileName + '.pdf');
+  
+      updateProgress(`PDF '${saveFileName}' saved successfully.`);
+      return true;
+    } catch (error) {
+      console.log("Error creating PDF:", error);
+      updateError(`Failed to create PDF: ${error}`);
       return false;
     }
   };
 
-  const download_all_tiles = async (tile_urls: any[], imageNum: number) => {
+  const create_zip_from_images = async (image_urls: any[]) => {
     try {
-      const zip = JSZip();
-      let loadedCount = 1;
-      const totalTiles = tile_urls.length;
+      const zip = new JSZip();
+      let imageCount = 1;
       
-      for (const tile_obj of tile_urls) {
+      updateProgress(`Creating ZIP with ${image_urls.length} images...`);
+      for (const dataUrl of image_urls) {
+        updateProgress(`Processing image ${imageCount}`);
         try {
-          updateProgress(`Zipping image ${imageNum}: processing tile ${loadedCount}/${totalTiles}`);
+          if (!dataUrl) continue;
           
-          const response = await fetch(tile_obj.url);
-          if (!response.ok) {
-            console.log(`Failed to fetch tile ${loadedCount}: ${response.status}`);
-            continue;
+          // Convert base64 to blob
+          const byteString = atob(dataUrl.split(',')[1]);
+          const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
           }
-    
-          const blob = await response.blob();
-          const fileName = `image${imageNum}_tile_${loadedCount}.jpg`;
+          
+          const blob = new Blob([ab], { type: mimeString });
+          const fileName = `image${imageCount}.jpg`;
     
           zip.file(fileName, blob);
+          imageCount++;
         } catch (err) {
-          console.log(`Error processing tile ${loadedCount} for zip:`, err);
+          console.log(`Error processing image ${imageCount}:`, err);
         }
       }
   
-      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipBlob = await zip.generateAsync({ 
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 }
+      });
+      
       const link = document.createElement("a");
       link.href = URL.createObjectURL(zipBlob);
-      link.download = `tiles_image_${imageNum}.zip`;
+
+      if(saveFileName.includes('.zip'))
+        link.download = saveFileName;
+      else 
+        link.download = (saveFileName + '.zip');
+
       document.body.appendChild(link);
       link.click();
   
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
-      
+      updateProgress(`Zip '${saveFileName}' saved successfully.`);
       return true;
     } catch (error) {
-      console.log("Error creating zip:", error);
-      updateError(`Failed to create zip for image ${imageNum}: ${error}`);
+      updateError(`Failed to create output file: ${error}`);
       return false;
     }
   };
@@ -311,10 +411,10 @@ function App() {
     }
   };
 
-  const handleRange = (event: React.ChangeEvent<HTMLInputElement >) => {
-    const resoultion = event.currentTarget.value;
-    if(resoultion)
-      setResolution(parseInt(resoultion));
+  const handleRange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const resolution = event.currentTarget.value;
+    if(resolution)
+      setResolution(parseInt(resolution));
   };
 
   return (
@@ -352,8 +452,8 @@ function App() {
               backgroundColor: '#44074B',
               color: 'white',
               fontSize: '1rem',
-              boxShadow: '0px 0px 30px 2px #44074B',
-              opacity: `${manifest.length > 0 ? '1' : '0.9'}`
+              boxShadow: `0px 0px ${manifest.length > 0 ? '10px' : '20px'} 2px #44074B`,
+              opacity: `${isLoading ? '0.9' : '1'}`
             }}
           />
         </Form.Group>
@@ -368,21 +468,8 @@ function App() {
         >
           <i className="bi bi-box-arrow-down fs-3"></i>
         </button>
-
-        {/* <hr className='mb-2 border-2' /> */}
-        
         
         <Stack gap={1} className='mt-4' style={{fontSize: '0.9rem'}}>  
-          <Form.Group className="text-light d-flex align-items-center">
-            <Form.Label className='fw-bold'>DOWNLOAD INDIVIDUAL TILE:</Form.Label>
-            <Form.Check
-              type="checkbox"
-              checked={zipTiles}
-              onChange={(e) => setZipTiles(e.target.checked)}
-              className='ms-auto mb-2'
-            />
-          </Form.Group>
-
           <Form.Group className="text-light d-flex align-items-center">
             <Form.Label className='fw-bold'>SAVE AS:</Form.Label>
             <div className='ms-auto mb-2 d-flex'>
@@ -400,7 +487,7 @@ function App() {
               <Form.Check
                 type="radio"
                 checked={!saveToPDF}
-                label="JPG"
+                label="ZIP"
                 onChange={(e) => setSaveToPDF(!(e.target.checked))}
                 className=''
                 style={{
@@ -411,14 +498,22 @@ function App() {
           </Form.Group>
           
           <Form.Group className="text-light text-start">
-            <Form.Label className='fw-bold'>OUTPUT DIRECTORY:</Form.Label>
-            <div className="input-group custom-file-button">
-              <input type="file" className="form-control border-dark" id="inputGroupFile"
+            <Form.Label className='fw-bold'>FILENAME:</Form.Label>
+            <Form.Control 
+              type="text" 
+              className=''
+              placeholder="No filename chosen" 
+              value={saveFileName}
+              onChange={(event) => setSaveFileName(event?.target.value)}
+              disabled={isLoading}
               style={{
-                backgroundColor: '#2659CF'
+                backgroundColor: '#204AAC',
+                color: '#FFFB00',
+                borderWidth: '1.5px',       
+                borderColor: '#537DDF',
+                borderStyle: 'solid',
               }}
-              />
-            </div>
+            />
           </Form.Group>
 
           <Form.Group className="text-light text-start mt-1">
@@ -445,6 +540,7 @@ function App() {
 
       <div 
         className='px-2 py-1 rounded text-start overflow-y-scroll flex-grow-1' 
+        ref={consoleContainerRef}
         style={{
           backgroundColor: '#204AAC',
           color: '#FFFB00',

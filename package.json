@@ -12,6 +12,7 @@
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
     "bootstrap": "^5.3.3",
+    "jspdf": "^3.0.1",
     "jszip": "^3.10.1",
     "react": "^19.1.0",
     "react-bootstrap": "^2.10.9",
